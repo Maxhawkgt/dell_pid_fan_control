@@ -2,6 +2,13 @@
 
 This repository has been recreated due to some errors on my part. I also took this opportunity to rename the old shell file from `tempcontrol3.sh` to `tempcontrol.sh` to keep the filename more generic and allow proper history.
 
+## Change History
+- **Nov 28 2019 (V3)**
+  - Initial release
+- **Sep 5 2020 (V5)**
+  - Add functionality to increase minimum speed based on power consumption. This prevents the fan from cycling speeds during heavy loads
+  - The power figures are based on the granularity of the power consumption jumps. On my server it changes in steps of 14ø
+
 ## Description
 This script controls the fans in a Dell R720xd based on CPU and ambient temperature readings from the server's iDRAC controller. Temperture is read using `SNMPWALK`. Optionally the temperature can be read using `IPMITOOL` but I found this to slower than using SNMP. Fan speed is set using `IPMITOOL`.
 

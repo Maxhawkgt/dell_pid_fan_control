@@ -14,7 +14,7 @@
 # snmpwalk - audo apt install snmp
 # ipmitool – sudo apt install ipmitool
 #
-# Version 3 (Nov 28 2019)
+# Version 5 (Sep 5 2020)
 # ----------------------------------------------------------------------------------
 
 
@@ -29,6 +29,12 @@ COMMUNITYNAME="your_community_name"
 # TEMPERATURE
 # If the CPU temperature goes above TARGETTEMP, use PID control to set fan speed.
 TARGETTEMP=60
+
+# POWER
+# If Power Consumption exceeds POWERTHRESHOLD, I_min is adjusted by IMINADJUST
+# These variables currently are not being used
+POWERTHRESHOLD=210
+IMINADJUST=10
 
 # PID (Proportional, Integral, Derivative). Adjust these 3 parameters to alter
 # how the fan reacts to changes in temperature.
@@ -60,39 +66,70 @@ LastFANSPEED=0
 # Format data that is sent to journalctl log
 dumpformat="PID=%3.0f (%3.0f/%3.0f/%3.0f) Der=%3.0f Int=%3.0f Err=%3.0f CPU=%2.0f Fan=%2.0f Lastspeed=%5.0f"
 
-function PingHealthChecks () {
-	curl -fsS --retry 3 https://hc-ping.com/your-special-id >/dev/null 2>&1
-}
-
 # Set the "idle speed" of the fans based on ambient temperature. If you don't want variable
 # minimum fan speed, set I_min to a specific value in the variable initialization area and
 # comment out this function in the main code.
 function SetMinFanSpeed () {
-	if [[ $AMBIENT -lt 23 ]]; then
-	#set fan speed to 4000 / 15%
-	  I_min=15
-		else
-		if [[ $AMBIENT -lt 24 ]]; then
-		  #set fan speed to 4200 / 16%
-			  I_min=16
+	if [[ $AMBIENT -lt 22 ]]; then
+		#set fan speed to xxx / 13%
+		I_min=13
 			else
-			if [[ $AMBIENT -lt 25 ]]; then
+		if [[ $AMBIENT -lt 23 ]]; then
+		#set fan speed to 4000 / 15%
+		I_min=15
+			else
+			if [[ $AMBIENT -lt 24 ]]; then
+			#set fan speed to 4200 / 16%
+				I_min=16
+				else
+				if [[ $AMBIENT -lt 25 ]]; then
 					  #set fan speed to 4560 / 18%
 					  I_min=18
-				else
-				if [[ $AMBIENT -lt 26 ]]; then
+					else
+					if [[ $AMBIENT -lt 26 ]]; then
 						  #set fan speed to 4800 / 20%
 						  I_min=20
 						else
 						if [[ $AMBIENT -lt 27 ]]; then
 									  #set fan speed to 5500 / 25%
-									  I_min=25
-									  else I_min=30
+									  I_min=22
+									  else I_min=24
 						fi
+					fi
 				fi
 			fi
 		fi
 	fi
+	
+	# Adjust minimum fan speed if power is above threshold. This helps prevents the 
+	# the temperature from cycling up and down during heavier loads
+	if [[ $POWER -ge 294 ]]; then
+		I_min=$(($I_min + 30))
+		else
+		if [[ $POWER -ge 280 ]]; then
+			I_min=$(($I_min + 25))
+			else
+			if [[ $POWER -ge 266 ]]; then
+				I_min=$(($I_min + 20))
+				else 
+				if [[ $POWER -ge 252 ]]; then
+					I_min=$(($I_min + 15))
+					else 
+					if [[ $POWER -ge 238 ]]; then
+						I_min=$(($I_min + 10))
+						else 
+						if [[ $POWER -ge 224 ]]; then
+						I_min=$(($I_min + 5))
+						fi
+					fi
+				fi
+			fi
+		fi
+	fi
+	echo New I_min = $I_min
+	
+#	echo Power = $POWER   IMINADJUST = $IMINADJUST   I_min = $I_min
+	echo Power = $POWER   I_min = $I_min
 	
 	echo Setting MinFanSpeed to $I_min
 }
@@ -122,7 +159,7 @@ function Set_Fan_Auto () {
 	echo Fan control set to automatic
 }
 
-# Read server temperatures using IPMITOOL. Currently not used in this script.
+# Read server temperatures using IPMITOOL. Currently not used in this script. Much slower than SNMPWALK
 function Get_Temperature_IPMI() {
 	# This sends an IPMI command to get all the temperatures, and outputs it as two digits.
 	ipmitool -I lanplus -H $IPMIHOST -U $IPMIUSER -P $IPMIPW sdr type temperature > ipmitemp
@@ -151,12 +188,14 @@ function Get_Temperature_SNMP() {
 	CPU1=$(snmpwalk -c $COMMUNITYNAME -v 2c -Ovq $IPMIHOST 1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1.3)
 	CPU2=$(snmpwalk -c $COMMUNITYNAME -v 2c -Ovq $IPMIHOST 1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1.4)
 	FAN1=$(snmpwalk -c $COMMUNITYNAME -v 2c -Ovq $IPMIHOST 1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1.1)
+	POWER=$(snmpwalk -c $COMMUNITYNAME -v 2c -Ovq $IPMIHOST 1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3)
+
 
 	AMBIENT=$(bc <<< "$AMBIENT*0.1")
 	EXHAUST=$(bc <<< "$EXHAUST*0.1")
 	CPU1=$(bc <<< "$CPU1*0.1")
 	CPU2=$(bc <<< "$CPU2*0.1")
-	echo Get SNMP Temp=$AMBIENT $EXHAUST $CPU1 $CPU2
+	echo Get SNMP Temp=$AMBIENT $EXHAUST $CPU1 $CPU2   Power=$POWER
 	
 	# Convert from floating point to integer. This truncates the decimal but
 	# R720xd only returns integer results
@@ -219,7 +258,7 @@ while true; do
 		echo Temperature greater than $TARGETTEMP. Setting fanspeed to $FANSPEED
 
 		# healthchecks.io
-		PingHealthChecks
+		curl -fsS --retry 3 https://hc-ping.com/a9529a10-cab7-4ca4-968e-7814e1178ef3 >/dev/null 2>&1
 
 		sleep $pollinginterval
 
@@ -240,7 +279,7 @@ while true; do
 	Write_Log
 
 	# healthchecks.io
-	PingHealthChecks
+	curl -fsS --retry 3 https://hc-ping.com/a9529a10-cab7-4ca4-968e-7814e1178ef3 >/dev/null 2>&1
 	
 	sleep $pollinginterval
 
