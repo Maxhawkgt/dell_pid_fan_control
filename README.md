@@ -30,7 +30,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/path-to-script/tempcontrol3.sh &
+ExecStart=/path-to-script/tempcontrol.sh &
 ExecStopPost=/path-to-script/autofan.sh &
 TimeoutSec=15
 Restart=always
