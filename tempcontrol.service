@@ -1,0 +1,12 @@
+Description=Automatic fan control of R720xd
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/path-to-script/tempcontrol.sh &
+ExecStopPost=/path-to-script/autofan.sh &
+TimeoutSec=15
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
